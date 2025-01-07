@@ -1,2 +1,141 @@
 # Zonal_Stats_3
 Performs vegetation index calculation, volume calculation, and raw extraction, followed by extraction of zonal statistics
+
+## Explanation of Zonal Stats
+
+### Workflow
+The Zonal Stats tool has the following basic workflow:
+1. Read input geopackage with geopandas
+2. Read input rasters and perform desired calculations (veg indices, volume, etc.) using rasterio and scikit-image 
+3. Write calculations to temporary rasters using scikit-image, preserve metadata with exiftool
+4. Using exactextract python package, get median values of calculations within user created polygons (or sum in the case of volume calculation)
+5. Append exactextract results as new columns to inputted geopackage
+6. Write updated geopackage to file using geopandas
+
+### Packages/Environment
+Currently, the most recent version of the environment for Zonal Stats is using Python 3.9.  
+Zonal Stats uses the following major python packages (not including those part of the default Python installation)
+- Geopandas (and therefore Pandas): https://geopandas.org/
+- Rasterio: https://rasterio.readthedocs.io/
+- Exactextract: https://github.com/isciences/exactextract
+- Pyexiftool: https://smarnach.github.io/pyexiftool/
+- Shapely: https://shapely.readthedocs.io/en/stable/manual.html
+- Scikit-image (skimage): https://scikit-image.org/
+- Numpy: https://numpy.org/
+
+## Running Zonal Stats
+
+To run zonal_stats, you will need to activate the conda environment created from the geospatial3.9_env.yml. Next `cd` to the `zonal_stats` folder. In here, you will find `zonal_stats_3.py`. This program can run any number of index/data extractions as specified by flags, and has two required inputs, an input geopackage and an output geopackage. The command is run like so:
+```
+python3 zonal_stats_3.py [OPTIONS] <index_flags> <index_requirements> /path/to/input.gpkg /path/to/output.gpkg
+```
+
+Please note that at least one index option (-a, -i, -n, -v or -V) and its corresponding input directory must be used in order to run
+
+All non-volumetric calculations and extractions require band order to be specified as well. The default band order is [red,green,blue,redege,nir], and you can
+use the default by using empty square brackets, like [], when specifying band order.
+
+Additionally, images in your input folder need to have a date in their file, delimited by ., _, or -. For example, three vaild date formats would be:
+
+YYYY_MM_DD  
+DD.MM.YYYY  
+MM-DD-YYYY  
+
+Zonal stats has the following global options:
+```
+Global Options
+    -h      Show this help
+    -q      Suppress non-error messages
+    -l      Show available vegetation indices
+    -u <uid>        Specify a unique ID column name from geopackage/shapefile (verify that it is actually unique, there cannot be any repeats)
+    -t <threads>    Specify number of threads for multithreading, by default one thread is used, you can specify up to total thread count - 2 (recommended amount is number of images to be processed)
+    -p              Use a geopackage that has points instead of polygons, returns values at those points
+    -S <distance>   Use a geopackage that has points instead of polygons, and specify a distance in meters for a square buffer around the point
+    -C <distance>   Use a geopackage that has points instead of polygons, and specify a distance in meters for a circular buffer around the point
+    -o <directory>  Generate multi-layer tifs containing intermediate calculation/extraction data by date in the specified output directory
+```
+
+The options should be specified in the `[OPTIONS]` part of the command. After specifying global options, you have to specify _at least one_ index or extraction to run. The options for index/extractions are as follows:
+```
+Index / Calculation options : Specify a directory (and band order if not a volume calc) per flag. Multiple index/calculation opetions may be used in a single command
+    -i [<indices>] <directory> [<bands>]     Pass a list of vegetation indices to be run, in format [index1,index2,...] (try -l option to see available indices)
+    -a <directory> [<bands>]          Run all vegetation indices (except DGCI, VOLUME, and NONE)
+    -n <directory> [<bands>]          Run zonal_stats without any indices (i.e. on a thermal image to get median temperatures)
+    -v <directory>          Specify a path to a folder to run volume calculation on using a plane average calculation.
+    -V <directory> <second_dsm.tif>      Specify a path to a folder to run volume calculation on using a secondary DSM to calculate heights, the second DSM should be specified after the folder name.
+```
+
+For the -i option, a complete list of vegetation indices can be found by running `python3 zonal_stats_3.py -l`
+
+Below are some examples for running Zonal stats:
+```
+python3 zonal_stats_3.py -i [BI,SCI,GLI] flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg
+#Runs with indices BI, SCI, and GLI
+
+python3 zonal_stats_3.py -u pid -a flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg
+#Runs with all indices, unique ID column set to 'pid'
+
+python3 zonal_stats_3.py -a flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg
+#Runs all indices with band order red, green, blue, NIR, RedEdge
+
+python3 zonal_stats_3.py -n flight/thermals/ [swir] flight/rasters/ flight/package.gpkg zonal_stats.gpkg
+#Runs zonal stats on the thermals directory getting raw values
+
+python3 zonal_stats_3.py -v flight/dsms/ flight/package.gpkg zonal_stats.gpkg
+# Performs volume calculation using a plane average
+
+python3 zonal_stats_3.py -V flight/dsms/ flight/ref_dsm.tif flight/package.gpkg zonal_stats.gpkg
+# Performs volume calculation using a reference DSM raster
+
+python3 zonal_stats_3.py -t 12 -v flight/dsms/ flight/package.gpkg zonal_stats.gpkg
+# Uses 12 threads to perform volume calculation
+
+python3 zonal_stats_3.py -p -i [BI] flight/rasters/ [red,green,blue,redege,nir] flight/point_package.gpkg point_stats.gpkg
+# Gets values at each point of a point-based geopackage after BI calculation
+
+python3 zonal_stats_3.py -C 1 -i [BI] flight/rasters/ [red,green,blue,redege,nir] flight/point_package.gpkg circle_stats.gpkg
+# Makes circular buffers with a 1 meter radius from point-based geopackage and performs BI calculation and then gets stats for each buffer
+
+python3 zonal_stats_3.py -S 1 -i [BI] flight/rasters/ [red,green,blue,redege,nir] flight/point_package.gpkg square_stats.gpkg
+# Makes square buffers with a 1 meter radius from point-based geopackage and performs BI calculation and then gets stats for each buffer
+
+python3 zonal_stats_3.py -n flight/thermals/ [swir] -i [BI] flight/rasters/ [] flight/package.gpkg output.gpkg
+# Get raw values from SWIR images and gets the BI index from images in rasters with default band order
+
+python3 zonal_stats_3.py -o flight/outputs/ -i [BI,SCI,GLI] flight/raster/ [] flight/package.gpkg output.gpkg
+# Get BI, SCI and GLI indices and output rasters with calculation data in flight/outputs/
+```
+
+Aside from the built in vegetation indices and calculations, custom indices/calculation can be added via the indices.conf file within the same folder as zonal_stats_3.py. These function can be defined in indices.conf like so:
+```
+[NAME]
+    desc: Description
+    calc: Calculation
+```
+Where NAME is the index name (in all caps) and cannot be an existing index name (like SCI, BI, etc). Description is a brief description of the index, and calculation is a single line of valid python operations (+,-,/,\*,%,(),etc.) Note that functions from Python's Math library and the Numpy library are available and can be used here with `math.<function>` for math functions and `np.<numpy_function>` for Numpy functions. Raster bands are defined as variables in these equations like so:
+
+r = red  
+b = blue  
+g = green  
+n = nir  
+re = rededge  
+
+For example:
+```
+[EX]
+    desc: Example index that adds red, green and blue bands and divides by 10
+    calc: (r+g+b)/10
+```
+Another example with Numpy functions:
+```
+[EXNP]
+    desc: Example index using a Numpy function
+    calc: np.arctan(r*b)
+```
+
+Indices defined in indices.conf can be used in zonal stats by their name via the -i flag, like so:
+```
+python3 zonal_stats_3.py -i [EX] /path/to/images /path/to/input.gpkg /path/to/output.gpkg
+```
+
+For more information, run `python3 zonal_stats_3.py -h` and for all vegetation indices run `python3 zonal_stats_3.py -l`
