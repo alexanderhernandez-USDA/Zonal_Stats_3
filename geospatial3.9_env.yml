@@ -1,0 +1,26 @@
+name: geospatial
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - git
+  - numpy
+  - gdal
+  - pandas
+  - shapely
+  - geopandas
+  - rasterio
+  - matplotlib
+  - contextily
+  - scikit-image
+  - ipympl
+  - jupyter
+  - exiftool
+  - earthengine-api
+  - geemap
+  - geedim
+  - pip
+  - pip:
+    - cameratransform
+    - pyexiftool
+    - exactextract
