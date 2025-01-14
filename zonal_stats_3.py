@@ -2,6 +2,7 @@ import geopandas as gpd
 import pandas as pd
 import os, sys, re, shutil
 import rasterio
+from rasterio.mask import mask
 import numpy as np
 import multiprocessing
 import multiprocessing.pool
@@ -34,6 +35,7 @@ Global Options
     -S <distance>   Use a geopackage that has points instead of polygons, and specify a distance in meters for a square buffer around the point
     -C <distance>   Use a geopackage that has points instead of polygons, and specify a distance in meters for a circular buffer around the point
     -o <directory>  Generate multi-layer tifs containing intermediate calculation/extraction data by date in the specified output directory
+    -O <directory> <AOI_gpkg>   Generate multi-layer tifs with intermediate data in specified directory, clipping by polygon in AOI_gpkg geopackage
 
 Index / Calculation options : Specify a directory (and band order if not a volume calc) per flag. Multiple index/calculation options may be used in a single command
     -i [<indices>] <directory> [<bands>]    Pass a list of vegetation indices to be run, in format [index1,index2,...] (try -l option to see available indices)
@@ -77,17 +79,16 @@ default_bands = ['red','green','blue','rededge','nir']
 valid_types = ['tif','tiff']
 dgci = False
 no_index = False
-uid = 'id'
 no_ind_dir = ''
 date_regex = "([0-3]?[0-9](_|-|\.)[0-3]?[0-9](_|-|\.)[0-9]{2,4}|[0-9]{2,4}(_|-|\.)[0-3]?[0-9](_|-|\.)[0-3]?[0-9])"
 to_run = []
 threads = 1
-proc_dir = f".{os.getpid()}_proc_dir"
 polygons = True
 buffer = None
 buffer_size = 0
 script_dir = os.path.dirname(os.path.realpath(__file__))
 output = None
+aoi_file = None
 
 
 # Get a single band from an image
@@ -98,7 +99,7 @@ def get_band(raster,bands,band):
         return ds[bands.index(band)],ras.meta.copy()
 
 # Write processing tif from raster data for an index, copies over original tags as well
-def write_tif(data,t,in_dir,tName,i):
+def write_tif(proc_dir,data,t,in_dir,tName,i):
     if data is None:
         print(f"Error in processing {tName}_{i}!")
         return "ERROR"
@@ -113,23 +114,23 @@ def write_tif(data,t,in_dir,tName,i):
         dst.write_band(1,data)
 
 # Run all standard vegetation indices
-def run_all(t,in_dir,tName,bands,r=None,gdf=None,pool=None,wide_open=False):
+def run_all(proc_dir,t,in_dir,tName,bands,r=None,gdf=None,pool=None,wide_open=False):
     if len(indexDict.keys()) < 5:
         print("No indices to run on! Likely missing indices.conf!")
         return
     if type(pool) != type(None) and wide_open:
-        pool.starmap(sub_process_image,[(i,in_dir,t,bands,tName) for i in list(indexDict.keys())[4:]])
+        pool.starmap(sub_process_image,[(proc_dir,i,in_dir,t,bands,tName) for i in list(indexDict.keys())[4:]])
     else:
         for i in list(indexDict.keys())[4:]:
-            res = write_tif(indexDict[i](os.path.join(in_dir,t),bands),t,in_dir,tName,i)
+            res = write_tif(proc_dir,indexDict[i](os.path.join(in_dir,t),bands),t,in_dir,tName,i)
             if res=="ERROR":
                 return 'ERROR'
 
 # Run a list of vegetation indices
-def run_list(t,in_dir,tName,bands,indexFlags):
+def run_list(proc_dir,t,in_dir,tName,bands,indexFlags):
     for i in indexFlags:
         if i in indexDict:
-            res = write_tif(indexDict[i](os.path.join(in_dir,t),bands),t,in_dir,tName,i)
+            res = write_tif(proc_dir,indexDict[i](os.path.join(in_dir,t),bands),t,in_dir,tName,i)
             if res=="ERROR":
                 return 'ERROR'
         else:
@@ -154,20 +155,20 @@ def calc_DGCI(raster,bands):
     return dgci,out_meta
 
 # Run DGCI (wrapper for calc_DGCI)
-def run_dgci(t,in_dir,tName,bands,r,gdf):
-    res = write_tif(calc_DGCI(os.path.join(in_dir,t),bands),t,in_dir,tName,"DGCI")
+def run_dgci(proc_dir,t,in_dir,tName,bands,r,gdf):
+    res = write_tif(proc_dir,calc_DGCI(os.path.join(in_dir,t),bands),t,in_dir,tName,"DGCI")
     if res=='ERROR':
         return 'ERROR'
 
 # Make a copy of image for raw data statistics
-def run_raw(t,in_dir,tName,bands,r,gdf):
+def run_raw(proc_dir,t,in_dir,tName,bands,r,gdf):
     for b in bands:
-        res = write_tif(get_band(os.path.join(in_dir,t),bands,b),t,in_dir,tName,f"{b}")
+        res = write_tif(proc_dir,get_band(os.path.join(in_dir,t),bands,b),t,in_dir,tName,f"{b}")
         if res=='ERROR':
             return 'ERROR'
 
 # Run volume calculation
-def calc_volume(t,in_dir,tName,bands,r,gdf):
+def calc_volume(proc_dir,t,in_dir,tName,bands,r,gdf):
     dsm_raw = rasterio.open(os.path.join(in_dir,t))
     dsm_data = dsm_raw.read(1)
     if r['ref'] == "NONE":
@@ -258,8 +259,19 @@ def read_config(conf):
                                                 re = ds[bands.index('rededge')]
                                             try:
                                                 res = {calc}
-                                            except:
-                                                print('Failed to run index {name}: This is likely due to a misspelling of band names. Valid names are:\\nred,green,blue,rededge,nir')
+                                            except Exception as e:
+                                                e = str(e)
+                                                if "'r'" in e:
+                                                    missing = "red"
+                                                elif "'g'" in e:
+                                                    missing = "green"
+                                                elif "'b'" in e:
+                                                    missing = "blue"
+                                                elif "'n'" in e:
+                                                    missing = "nir"
+                                                elif "'re'" in e:
+                                                    missing = "rededge"
+                                                print(f'Failed to run index {name}: missing band {{missing}}. This is likely due to a misspelling of band names. Valid names are:\\nred,green,blue,rededge,nir')
                                                 return None
                                             return res, out_meta""")
             indexDict[name] = locals()[f'calc_{name}']
@@ -268,9 +280,9 @@ def read_config(conf):
 read_config(os.path.join(script_dir,"indices.conf"))
 
 # sub function for image processing, used for multiprocessing
-def sub_process_image(i,in_dir,t,bands,tName):
+def sub_process_image(proc_dir,i,in_dir,t,bands,tName):
     if i in indexDict:
-        res = write_tif(indexDict[i](os.path.join(in_dir,t),bands),t,in_dir,tName,i)
+        res = write_tif(proc_dir,indexDict[i](os.path.join(in_dir,t),bands),t,in_dir,tName,i)
         if res=='ERROR':
             print(f"Failed to process index: {i} due to previous errors!")
             return "ERROR"
@@ -279,7 +291,7 @@ def sub_process_image(i,in_dir,t,bands,tName):
     return i
 
 # Main image processing function to be called as a process from zonal_stats function
-def process_image(r,t,in_dir,tName,index_list,gdf,bands,pool=None,wide_open=False):
+def process_image(proc_dir,r,t,in_dir,tName,index_list,gdf,bands,pool=None,wide_open=False):
     if not os.path.exists(os.path.join(proc_dir,tName)):
         try:
             os.mkdir(os.path.join(proc_dir,tName))
@@ -287,20 +299,20 @@ def process_image(r,t,in_dir,tName,index_list,gdf,bands,pool=None,wide_open=Fals
             None
     if len(index_list) > 0:
         if type(pool) != type(None) and wide_open:
-            res = pool.starmap(sub_process_image,[(i,in_dir,t,bands,tName) for i in index_list])
+            res = pool.starmap(sub_process_image,[(proc_dir,i,in_dir,t,bands,tName) for i in index_list])
         else:
-            res = run_list(t,in_dir,tName,bands,index_list)
+            res = run_list(proc_dir,t,in_dir,tName,bands,index_list)
     else:
         if r['indices'] == 'ALL' and type(pool) != type(None) and wide_open:
-            res = run_all(t,in_dir,tName,bands,None,None,pool,wide_open)
+            res = run_all(proc_dir,t,in_dir,tName,bands,None,None,pool,wide_open)
         else:
-            res = indexDict[r['indices']](t,in_dir,tName,bands,r,gdf)
+            res = indexDict[r['indices']](proc_dir,t,in_dir,tName,bands,r,gdf)
     if res is not None and "ERROR" in res:
         return "ERROR"
     
 
 # sub function for exact extract, used for multiprocessing
-def exact_extract_sub(c,tName,gpkg):
+def exact_extract_sub(proc_dir,c,tName,gpkg,uid):
     layer = gpd.list_layers(gpkg).iloc[0]['name']
     gpkg = gpd.read_file(gpkg,layer=layer)
     if 'VOLUME' in c:
@@ -312,14 +324,14 @@ def exact_extract_sub(c,tName,gpkg):
     return res
 
 # Run exact extract and get zonal statistics for processed images
-def run_exact_extract(tName,gpkg,pool,open_pool):
+def run_exact_extract(proc_dir,tName,gpkg,pool,open_pool,uid):
     calc_tifs = os.listdir(os.path.join(proc_dir,tName))
     if len(calc_tifs)==0:
         return None
     if open_pool:
-        results = pool.starmap(exact_extract_sub,[(c,tName,gpkg) for c in calc_tifs])
+        results = pool.starmap(exact_extract_sub,[(proc_dir,c,tName,gpkg,uid) for c in calc_tifs])
     else:
-        results = [exact_extract_sub(c,tName,gpkg) for c in calc_tifs]
+        results = [exact_extract_sub(proc_dir,c,tName,gpkg,uid) for c in calc_tifs]
 
     for n,res in enumerate(results):
         if n==0:
@@ -331,7 +343,7 @@ def run_exact_extract(tName,gpkg,pool,open_pool):
     return res_out
 
 # Get values from processed images at specific points
-def get_point_values(tName,gdf,pool,open_pool):
+def get_point_values(proc_dir,tName,gdf,pool,open_pool):
     calc_tifs = os.listdir(os.path.join(proc_dir,tName))
     gdf = gpd.read_file(gdf)
     data = {uid: gdf[uid]}
@@ -349,7 +361,7 @@ def get_point_values(tName,gdf,pool,open_pool):
     return df
 
 # Create multilayer tifs by date
-def get_multilayer_tif(subs):
+def get_multilayer_tif(proc_dir,subs,in_gpkg):
     total = 0
     layers = []
     names = []
@@ -370,10 +382,69 @@ def get_multilayer_tif(subs):
             dst.write_band(n+1,l)
         dst.descriptions = tuple(names)
 
+    if aoi_file is not None:
+        gpkg = gpd.read_file(aoi_file)
+        if "Undefined geographic SRS" in str(gpkg.crs):
+            print("Area of Interest gpkg has no CRS! Not clipping by AOI!")
+            return
+    else:
+        gpkg = gpd.read_file(in_gpkg)
+        gpkg['temp'] = 0
+        gpkg = gpkg.dissolve(by='temp')
+        gpkg['geometry'] = gpkg['geometry'].envelope
+
+    with rasterio.open(os.path.join(output,f"{date}_ZS_out.tif"),"r") as src:
+        vector = gpkg.to_crs(src.crs)
+        out_image, out_transform = mask(src,vector.geometry,crop=True,all_touched=True)
+        out_meta = src.meta.copy()
+    
+    out_meta.update({"height":out_image.shape[1], # height starts with shape[1]
+        "width":out_image.shape[2], # width starts with shape[2]
+        "transform":out_transform})
+
+    with rasterio.open(os.path.join(output,f"{date}_ZS_out.tif"),"w",**out_meta) as dst:
+        dst.write(out_image)
+        dst.descriptions = tuple(names)
+
+    
+def pre_clip(img_dir,proc_dir,gpkg,band_len):
+    gpkg['temp'] = 0
+    gpkg = gpkg.dissolve(by='temp')
+    gpkg['geometry'] = gpkg['geometry'].envelope
+    tifs = os.listdir(img_dir)
+    tifs = [t for t in tifs if t.split('.')[-1].lower() in valid_types]
+    out_dir = os.path.join(proc_dir,f".{os.path.basename(os.path.abspath(img_dir))}_clips")
+    try:
+        os.mkdir(out_dir)
+    except FileExistsError:
+        None
+
+    for t in tifs:
+        with rasterio.open(os.path.join(img_dir,t)) as src:
+            vector = gpkg.to_crs(src.crs)
+            if(src.count != band_len):
+                print(f"Error: Raster band count and specified band count are not equal, raster has {src.count} bands, not {band_len}! Please check band names!",flush=True)
+                return "error"
+            try:
+                out_image, out_transform = mask(src,vector.geometry,crop=True,all_touched=True)
+            except ValueError:
+                print("Error: Input shapes from geopackage don't overlap raster!",flush=True)
+                return "error"
+            out_meta = src.meta.copy()
+
+            out_meta.update({"height":out_image.shape[1], # height starts with shape[1]
+            "width":out_image.shape[2], # width starts with shape[2]
+            "transform":out_transform,})
+            #"driver":"COG"})
+
+        with rasterio.open(os.path.join(out_dir,t),"w",**out_meta) as dst:
+            dst.write(out_image)
+
+    return out_dir
 
 
 # Main function for processing a specific 'run' or 'index'
-def process_run(r,gdf,pool,open_pool,wide_open=False):
+def process_run(proc_dir,r,gdf,pool,open_pool,wide_open=False):
     in_dir = r['path']
     if '[' in r['indices'] and ']' in r['indices']:
         index_list = r['indices'][1:-1].split(",")
@@ -398,18 +469,25 @@ def process_run(r,gdf,pool,open_pool,wide_open=False):
     if verbose:
         print(f"Starting image processing for calculation type(s): {r['indices']}, {len(tifs)} images found...")
 
+    in_dir = pre_clip(in_dir,proc_dir,gdf,len(bands))
+
+    if in_dir == "error":
+        return "error"
+
     #pool = NDPool(threads)
     if open_pool:
-        results = pool.starmap(process_image,[(r,t,in_dir,t.split('.tif')[0],index_list,gdf,bands,pool,wide_open) for t in tifs])
+        results = pool.starmap(process_image,[(proc_dir,r,t,in_dir,t.split('.tif')[0],index_list,gdf,bands,pool,wide_open) for t in tifs])
     else:
-        results = [process_image(r,t,in_dir,t.split('.tif')[0],index_list,gdf,bands) for t in tifs]
+        results = [process_image(proc_dir,r,t,in_dir,t.split('.tif')[0],index_list,gdf,bands) for t in tifs]
     if "ERROR" in results:
-            return "error"
+        return "error"
     if verbose:
         print(f"Finished {r['indices']}")
 
 # Main function
-def zonal_stats(to_run,gpkg,out_file,threads=1):
+def zonal_stats(to_run,gpkg,out_file,threads=1,uid='id'):
+    global proc_dir
+    proc_dir = f".{os.getpid()}_proc_dir"
     # Create processing directories, read geopackage
     if not os.path.exists(proc_dir):
         try:
@@ -422,6 +500,7 @@ def zonal_stats(to_run,gpkg,out_file,threads=1):
         gdf[uid] = gdf[uid].astype(str)
     except KeyError:
         print(f"{uid} wasn't found as a field name in {gpkg}! Try using the -u <field_name> option when running this script.")
+        shutil.rmtree(proc_dir)
         sys.exit(-1)
     # If a buffer was specified, create buffered geopackage
     if buffer == "circle":
@@ -447,18 +526,19 @@ def zonal_stats(to_run,gpkg,out_file,threads=1):
         open_pool = threads>(len(to_run)*2)
         total_images = sum([len(os.listdir(r['path'])) for r in to_run])
         wide_open = threads > ((len(to_run)*2)+(total_images*2))
-        res = pool.starmap(process_run,[(r,gdf,pool,open_pool,wide_open) for r in to_run])
+        res = pool.starmap(process_run,[(proc_dir,r,gdf,pool,open_pool,wide_open) for r in to_run])
         pool.close()
         pool.join()
         if "error" in res:
             print("Processing failed for some images, please correct errors and try again!")
+            shutil.rmtree(proc_dir)
             sys.exit(1)
 
     # Run exact extract and get zonal statistics for generated images, or get point values and/or output rasters
     with multiprocessing.Manager() as manager:
         pool = manager.Pool(threads)
         sub_dirs = os.listdir(proc_dir)
-        sub_dirs = [s for s in sub_dirs if os.path.isdir(os.path.join(proc_dir,s))]
+        sub_dirs = [s for s in sub_dirs if os.path.isdir(os.path.join(proc_dir,s)) and s[0] != "."]
         open_pool = threads>(len(sub_dirs)*2)
         if output != None:
             out_dates = {}
@@ -470,15 +550,15 @@ def zonal_stats(to_run,gpkg,out_file,threads=1):
                     out_dates[date] = [s]
             if verbose:
                 print(f"Outputting calculations/extractions to {output}")
-            results = pool.map(get_multilayer_tif,[d for d in out_dates.values()])
+            results = pool.starmap(get_multilayer_tif,[(proc_dir,d,gpkg) for d in out_dates.values()])
         if polygons:
             if verbose:
                 print("Extracting stats from processed images...")
-            results = pool.starmap(run_exact_extract,[(s,gpkg,pool,open_pool) for s in sub_dirs])
+            results = pool.starmap(run_exact_extract,[(proc_dir,s,gpkg,pool,open_pool,uid) for s in sub_dirs])
         else:
             if verbose:
                 print("Extracting point values from processed images...")
-            results = pool.starmap(get_point_values,[(s,gpkg,pool,open_pool) for s in sub_dirs])
+            results = pool.starmap(get_point_values,[(proc_dir,s,gpkg,pool,open_pool) for s in sub_dirs])
         
         pool.close()
         pool.join()
@@ -501,6 +581,7 @@ def zonal_stats(to_run,gpkg,out_file,threads=1):
 
 # Argument handling and parsing
 if __name__ == '__main__':
+    uid = 'id'
     if len(sys.argv) < 4:
         if len(sys.argv) == 1:
             print(helpScreen)
@@ -533,22 +614,29 @@ if __name__ == '__main__':
                         toRemove.append(sys.argv[n+1])
                     if "o" in a:
                         flag = True
-                        if os.path.exists(sys.argv[n+1]):
+                        if os.path.exists(sys.argv[n+1]) and os.path.isdir(sys.argv[n+1]):
                             output = sys.argv[n+1]
                             toRemove.append(sys.argv[n+1])
                         else:
                             print(f"{sys.argv[n+1]} is an invalid path for output directory!")
-                    #if "b" in a:
-                    #    flag = True
-                    #    if sys.argv[n+1][0] == "[" and sys.argv[n+1][-1] == "]":
-                    #        bands = sys.argv[n+1][1:-1].split(',')
-                    #        toRemove.append(sys.argv[n+1])
-                    #    else:
-                    #        print("Invalid use of -b flag, expected [<raster bands>], not "+sys.argv[n+1])
-                    #        sys.exit(-1)
+                            sys.exit(-1)
+                    if "O" in a:
+                        flag = True
+                        if os.path.exists(sys.argv[n+1]) and os.path.isdir(sys.argv[n+1]):
+                            output = sys.argv[n+1]
+                            toRemove.append(sys.argv[n+1])
+                            if os.path.exists(sys.argv[n+2]) and os.path.isfile(sys.argv[n+2]):
+                                aoi_file = sys.argv[n+2]
+                                toRemove.append(sys.argv[n+2])
+                            else:
+                                print(f"{sys.argv[n+2]} is an invalid file path for area of interest!")
+                                sys.exit(-1)
+                        else:
+                            print(f"{sys.argv[n+1]} is an invalid path for output directory!")
+                            sys.exit(-1)
                     if "i" in a:
                         flag = True
-                        if sys.argv[n+1][0] == "[" and sys.argv[n+1][-1] == "]":
+                        if sys.argv[n+1][0] == "[" and sys.argv[n+1][-1] == "]" and sys.argv[n+1] != "[]":
                             if sys.argv[n+3][0] == "[" and sys.argv[n+3][-1] == "]":
                                 if os.path.isdir(sys.argv[n+2]):
                                     toRemove.append(sys.argv[n+1])
@@ -589,7 +677,7 @@ if __name__ == '__main__':
                                 print("Invalid use of -n flag, specified directory "+sys.argv[n+1]+" isn't a directory")
                                 sys.exit(-1)
                         else:
-                            print(f"Invalid use of -n flag, {sys.argv[n+1]} is invalid format for band order")
+                            print(f"Invalid use of -n flag, {sys.argv[n+2]} is invalid format for band order")
                             sys.exit(-1)
                     if "v" in a:
                         flag = True
@@ -623,6 +711,7 @@ if __name__ == '__main__':
                                 sys.exit(-1)
                         else:
                             print(f"{sys.argv[n+1]} is an invalid format for threads, should be an integer greater than 1")
+                            sys.exit(-1)
                     if "p" in a:
                         flag = True
                         if buffer!=None:
@@ -674,4 +763,4 @@ if __name__ == '__main__':
             if len(to_run) == 0:
                 print("Please pass indices to be run!!")
                 sys.exit(-1)
-            zonal_stats(to_run,sys.argv[1],sys.argv[2],threads=threads)
+            zonal_stats(to_run,sys.argv[1],sys.argv[2],threads=threads,uid=uid)
