@@ -436,7 +436,6 @@ def pre_clip(img_dir,proc_dir,gpkg,band_len):
             out_meta.update({"height":out_image.shape[1], # height starts with shape[1]
             "width":out_image.shape[2], # width starts with shape[2]
             "transform":out_transform,})
-            #"driver":"COG"})
 
         with rasterio.open(os.path.join(out_dir,t),"w",**out_meta) as dst:
             dst.write(out_image)
