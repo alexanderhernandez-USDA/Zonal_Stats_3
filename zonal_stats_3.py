@@ -14,6 +14,7 @@ from osgeo import gdal
 gdal.UseExceptions()
 import math
 import warnings
+
 # Help screen
 helpScreen = """Usage: python3 zonal_stats_3.py [OPTIONS] <index_flag> <index_requirements> input_file.gpkg output_file.gpkg
 
@@ -29,7 +30,6 @@ Global Options
     -h      Show this help
     -q      Suppress non-error messages
     -l      Show available vegetation indices
-    -u <uid>        Specify a unique ID column name from geopackage/shapefile (verify that it is actually unique, there cannot be any repeats)
     -t <threads>    Specify number of threads for multithreading, by default one thread is used, you can specify up to total thread count - 2
     -p              Use a geopackage that has points instead of polygons, returns values at those points
     -S <distance>   Use a geopackage that has points instead of polygons, and specify a distance in meters for a square buffer around the point
@@ -46,7 +46,7 @@ Index / Calculation options : Specify a directory (and band order if not a volum
 
 Examples:
 python3 zonal_stats_3.py -i [BI,SCI,GLI] flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg       #Runs with indices BI, SCI, and GLI
-python3 zonal_stats_3.py -u pid -a flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg             #Runs with all indices, unique ID column set to 'pid'
+python3 zonal_stats_3.py -a flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg             #Runs with all indices
 python3 zonal_stats_3.py -a flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg    #Runs all indices with band order red, green, blue, NIR, RedEdge
 python3 zonal_stats_3.py -n flight/thermals/ [swir] flight/rasters/ flight/package.gpkg zonal_stats.gpkg   #Runs zonal stats on the thermals directory getting raw values
 python3 zonal_stats_3.py -v flight/dsms/ flight/package.gpkg zonal_stats.gpkg                       # Performs volume calculation using a plane average
@@ -105,7 +105,7 @@ def write_tif(proc_dir,data,t,in_dir,tName,i):
         return "ERROR"
     meta = data[1]
     data = data[0]
-    
+
     meta.update({
         "count": 1,
         "dtype": np.float32
@@ -240,7 +240,7 @@ def read_config(conf):
             desc = i.split(":")[-1].strip()
         elif "calc" in i:
             calc = i.split(':')[-1].strip()
-            exec(f"""def calc_{name}(raster,bands):      
+            exec(f"""def calc_{name}(raster,bands):
                                     with warnings.catch_warnings():
                                         warnings.simplefilter("ignore")
                                         with rasterio.open(raster) as ras:
@@ -310,17 +310,18 @@ def process_image(proc_dir,r,t,in_dir,tName,index_list,gdf,bands,pool=None,wide_
     if res is not None and "ERROR" in res:
         return "ERROR"
     
-
 # sub function for exact extract, used for multiprocessing
 def exact_extract_sub(proc_dir,c,tName,gpkg,uid):
     layer = gpd.list_layers(gpkg).iloc[0]['name']
     gpkg = gpd.read_file(gpkg,layer=layer)
-    if 'VOLUME' in c:
-        res = exact_extract(os.path.join(proc_dir,tName,c),gpkg,['sum'],output="pandas",include_cols=[uid])
-        res =  res.rename(columns={"sum":c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group()})
-    else:
-        res = exact_extract(os.path.join(proc_dir,tName,c),gpkg,['median'],output="pandas",include_cols=[uid])
-        res =  res.rename(columns={"median":c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group()})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        if 'VOLUME' in c:
+            res = exact_extract(os.path.join(proc_dir,tName,c),gpkg,['sum'],output="pandas",include_cols=[uid])
+            res =  res.rename(columns={"sum":c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group()})
+        else:
+            res = exact_extract(os.path.join(proc_dir,tName,c),gpkg,['median'],output="pandas",include_cols=[uid])
+            res =  res.rename(columns={"median":c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group()})
     return res
 
 # Run exact extract and get zonal statistics for processed images
@@ -338,7 +339,6 @@ def run_exact_extract(proc_dir,tName,gpkg,pool,open_pool,uid):
             res_out = res
         else:
             res_out =  res_out.merge(res,on=uid)
-    
     res_out[uid] = res_out[uid].astype(str)
     return res_out
 
@@ -346,6 +346,7 @@ def run_exact_extract(proc_dir,tName,gpkg,pool,open_pool,uid):
 def get_point_values(proc_dir,tName,gdf,pool,open_pool):
     calc_tifs = os.listdir(os.path.join(proc_dir,tName))
     gdf = gpd.read_file(gdf)
+    uid = "tmp_ID_EE"
     data = {uid: gdf[uid]}
     for c in calc_tifs:
         stat_name = c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group()
@@ -406,7 +407,7 @@ def get_multilayer_tif(proc_dir,subs,in_gpkg):
         dst.write(out_image)
         dst.descriptions = tuple(names)
 
-    
+
 def pre_clip(img_dir,proc_dir,gpkg,band_len):
     gpkg['temp'] = 0
     gpkg = gpkg.dissolve(by='temp')
@@ -485,7 +486,7 @@ def process_run(proc_dir,r,gdf,pool,open_pool,wide_open=False):
         print(f"Finished {r['indices']}")
 
 # Main function
-def zonal_stats(to_run,gpkg,out_file,threads=1,uid='id'):
+def zonal_stats(to_run,gpkg,out_file,threads=1):
     global proc_dir
     proc_dir = f".{os.getpid()}_proc_dir"
     # Create processing directories, read geopackage
@@ -496,12 +497,12 @@ def zonal_stats(to_run,gpkg,out_file,threads=1,uid='id'):
             None
     layer = gpd.list_layers(gpkg).iloc[0]['name']
     gdf = gpd.read_file(gpkg,layer=layer)
-    try:
-        gdf[uid] = gdf[uid].astype(str)
-    except KeyError:
-        print(f"{uid} wasn't found as a field name in {gpkg}! Try using the -u <field_name> option when running this script.")
-        shutil.rmtree(proc_dir)
-        sys.exit(-1)
+    gdf['tmp_ID_EE'] = gdf.index
+    uid = 'tmp_ID_EE'
+    gdf[uid] = gdf[uid].astype(str)
+    gdf.to_file(os.path.join(proc_dir,"tmp_id.gpkg"),driver="GPKG",mode="w")
+    gpkg = os.path.join(proc_dir,"tmp_id.gpkg")
+
     # If a buffer was specified, create buffered geopackage
     if buffer == "circle":
         if verbose:
@@ -567,12 +568,12 @@ def zonal_stats(to_run,gpkg,out_file,threads=1,uid='id'):
     for x in results:
         if type(x) != type(None):
             gdf = gdf.merge(x, on=uid)
-
     shutil.rmtree(proc_dir)
 
     # Create output geopackage
     gdf.columns = [c.split("_median")[0] for c in gdf.columns]
     gdf.columns = [c.split("_sum")[0] for c in gdf.columns]
+    gdf.drop('tmp_ID_EE',axis=1,inplace=True)
     gdf.to_file(out_file, layer='stats', driver="GPKG", mode="w")
     if verbose:
         print("Finished!")
@@ -581,7 +582,6 @@ def zonal_stats(to_run,gpkg,out_file,threads=1,uid='id'):
 
 # Argument handling and parsing
 if __name__ == '__main__':
-    uid = 'id'
     if len(sys.argv) < 4:
         if len(sys.argv) == 1:
             print(helpScreen)
@@ -608,10 +608,6 @@ if __name__ == '__main__':
                     if "q" in a:
                         verbose = False
                         flag = True
-                    if "u" in a:
-                        flag = True
-                        uid = sys.argv[n+1]
-                        toRemove.append(sys.argv[n+1])
                     if "o" in a:
                         flag = True
                         if os.path.exists(sys.argv[n+1]) and os.path.isdir(sys.argv[n+1]):
@@ -763,4 +759,4 @@ if __name__ == '__main__':
             if len(to_run) == 0:
                 print("Please pass indices to be run!!")
                 sys.exit(-1)
-            zonal_stats(to_run,sys.argv[1],sys.argv[2],threads=threads,uid=uid)
+            zonal_stats(to_run,sys.argv[1],sys.argv[2],threads=threads)
