@@ -18,7 +18,6 @@ Zonal Stats uses the following major python packages (not including those part o
 - Geopandas (and therefore Pandas): https://geopandas.org/
 - Rasterio: https://rasterio.readthedocs.io/
 - Exactextract: https://github.com/isciences/exactextract
-- Pyexiftool: https://smarnach.github.io/pyexiftool/
 - Shapely: https://shapely.readthedocs.io/en/stable/manual.html
 - Scikit-image (skimage): https://scikit-image.org/
 - Numpy: https://numpy.org/
