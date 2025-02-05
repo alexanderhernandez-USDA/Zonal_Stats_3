@@ -12,6 +12,7 @@ Computes RGB and Multispectral vegetation indices, cut/fill volumes using digita
 
 [Usage - Running Zonal Stats](#Running-Zonal-Stats)
 
+[Adding New Indice](#Customizing-or-adding-your-own-indices)
 
 ### Workflow
 The Zonal Stats tool has the following basic operational workflow:
@@ -55,9 +56,10 @@ To run zonal_stats, you will need to activate the conda environment created from
 conda activate geospatial       # This will create an environement called 'geospatial'
 ```
 
-Now that you have created and activated the miniconda environment - you can download the following python script to your disk:
+Now that you have created and activated the miniconda environment - you can download the following python script (*.py) and configuration file (*.conf) that contains all of the available vegetation indices to your disk:
 
 https://github.com/alexanderhernandez-USDA/Zonal_Stats_3/blob/main/zonal_stats_3.py
+https://github.com/alexanderhernandez-USDA/Zonal_Stats_3/blob/main/indices.conf
 
 Next `cd` or navigate to the `zonal_stats` folder where you saved the Python script. In here, you will find `zonal_stats_3.py`. This program can run any number of index/data extractions as specified by flags, and has two required inputs, an input geopackage and an output geopackage. The command is run like so:
 ```
@@ -141,7 +143,9 @@ python3 zonal_stats_3.py -o flight/outputs/ -i [BI,SCI,GLI] flight/raster/ [] fl
 ```
 
 # Customizing or adding your own indices
-Aside from the built in vegetation indices and calculations, custom indices/calculation can be added via the indices.conf file within the same folder as zonal_stats_3.py. These function can be defined in indices.conf like so:
+Aside from the built in vegetation indices and calculations, custom indices/calculation can be added via the indices.conf file within the same folder as zonal_stats_3.py. 
+
+These function can be defined in indices.conf like so:
 ```
 [NAME]
     desc: Description
