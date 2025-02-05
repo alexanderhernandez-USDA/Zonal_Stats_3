@@ -49,16 +49,17 @@ conda create -f geospatial3.9_env.yml       # This will create an environement c
 
 
 ## Running Zonal Stats
-Now that you have created and activated the miniconda environment - you can download the following python script to your disk:
-
-
 To run zonal_stats, you will need to activate the conda environment created from the geospatial3.9_env.yml.
 
 ```
 conda activate geospatial       # This will create an environement called 'geospatial'
 ```
 
-Next `cd` to the `zonal_stats` folder. In here, you will find `zonal_stats_3.py`. This program can run any number of index/data extractions as specified by flags, and has two required inputs, an input geopackage and an output geopackage. The command is run like so:
+Now that you have created and activated the miniconda environment - you can download the following python script to your disk:
+
+https://github.com/alexanderhernandez-USDA/Zonal_Stats_3/blob/main/zonal_stats_3.py
+
+Next `cd` or navigate to the `zonal_stats` folder where you saved the Python script. In here, you will find `zonal_stats_3.py`. This program can run any number of index/data extractions as specified by flags, and has two required inputs, an input geopackage and an output geopackage. The command is run like so:
 ```
 python3 zonal_stats_3.py [OPTIONS] <index_flags> <index_requirements> /path/to/input.gpkg /path/to/output.gpkg
 ```
@@ -139,6 +140,7 @@ python3 zonal_stats_3.py -o flight/outputs/ -i [BI,SCI,GLI] flight/raster/ [] fl
 # Get BI, SCI and GLI indices and output rasters with calculation data in flight/outputs/
 ```
 
+# Customizing or adding your own indices
 Aside from the built in vegetation indices and calculations, custom indices/calculation can be added via the indices.conf file within the same folder as zonal_stats_3.py. These function can be defined in indices.conf like so:
 ```
 [NAME]
