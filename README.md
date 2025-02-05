@@ -4,8 +4,14 @@ Computes RGB and Multispectral vegetation indices, cut/fill volumes using digita
 [Back to home](https://github.com/alexanderhernandez-USDA/Zonal-Stats-QGIS/blob/main/homedir.md)
 
 # Contents
+[Workflow](#Workflow)
 
-## Explanation of Zonal Stats
+[Packages and Environment](#Packages/Environment)
+
+[Installation and Setup](#Installation/Setup)
+
+[Usage - Running Zonal Stats](#Running-Zonal-Stats)
+
 
 ### Workflow
 The Zonal Stats tool has the following basic workflow:
