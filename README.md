@@ -47,6 +47,8 @@ You can then create the miniconda environment using the following sintax:
 conda create -f geospatial3.9_env.yml       # This will create an environement called 'geospatial'
 ```
 
+> conda create -f geospatial3.9_env.yml       # This will create an environement called 'geospatial'
+
 ## Running Zonal Stats
 
 To run zonal_stats, you will need to activate the conda environment created from the geospatial3.9_env.yml. Next `cd` to the `zonal_stats` folder. In here, you will find `zonal_stats_3.py`. This program can run any number of index/data extractions as specified by flags, and has two required inputs, an input geopackage and an output geopackage. The command is run like so:
