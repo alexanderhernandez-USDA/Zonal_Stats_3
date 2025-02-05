@@ -1,5 +1,9 @@
-# Zonal_Stats_3
-Performs vegetation index calculation, volume calculation, and raw extraction, followed by extraction of zonal statistics
+# Command-line Zonal Stats and Volume Extraction Tool
+Computes RGB and Multispectral vegetation indices, cut/fill volumes using digital surface models, and allows extraction of reduced (zonal statistics) values of pixels contained within the spatial domain of polygon geometries.
+
+[Back to home](https://github.com/alexanderhernandez-USDA/Zonal-Stats-QGIS/blob/main/homedir.md)
+
+# Contents
 
 ## Explanation of Zonal Stats
 
