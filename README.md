@@ -12,7 +12,7 @@ Computes RGB and Multispectral vegetation indices, cut/fill volumes using digita
 
 [Usage - Running Zonal Stats](#Running-Zonal-Stats)
 
-[Adding New Indice](#Customizing-or-adding-your-own-indices)
+[Adding New Indices](#Customizing-or-adding-your-own-indices)
 
 ### Workflow
 The Zonal Stats tool has the following basic operational workflow:
