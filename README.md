@@ -14,11 +14,11 @@ Computes RGB and Multispectral vegetation indices, cut/fill volumes using digita
 
 
 ### Workflow
-The Zonal Stats tool has the following basic workflow:
+The Zonal Stats tool has the following basic operational workflow:
 1. Read input geopackage with geopandas
-2. Read input rasters and perform desired calculations (veg indices, volume, etc.) using rasterio and scikit-image 
+2. Read input rasters and perform desired calculations (vegetation indices, volume, etc.) using rasterio and scikit-image 
 3. Write calculations to temporary rasters using scikit-image, preserve metadata with exiftool
-4. Using exactextract python package, get median values of calculations within user created polygons (or sum in the case of volume calculation)
+4. Using exactextract python package, get median values (or sum in the case of volume calculation) of calculations within user created polygons or within polygons generated from point geometries 
 5. Append exactextract results as new columns to inputted geopackage
 6. Write updated geopackage to file using geopandas
 
@@ -34,7 +34,15 @@ Zonal Stats uses the following major python packages (not including those part o
 
 ## Installation/Setup
 
+The first thing you need is to have miniconda already installed on your computer (https://docs.anaconda.com/miniconda/install/).
+
 You will need to create a conda environment to run zonal stats 3. This can be done by using the geospatial3.9_env.yml file in this repository.
+The YML file can be accessed directly from:
+
+https://github.com/alexanderhernandez-USDA/Zonal_Stats_3/blob/main/geospatial3.9_env.yml
+
+You can then create the miniconda environment using the following sintax:
+
 ```
 conda create -f geospatial3.9_env.yml       # This will create an environement called 'geospatial'
 ```
