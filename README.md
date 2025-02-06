@@ -68,7 +68,7 @@ python3 zonal_stats_3.py [OPTIONS] <index_flags> <index_requirements> /path/to/i
 
 Please note that at least one index option (-a, -i, -n, -v or -V) and its corresponding input directory must be used in order to run
 
-All non-volumetric calculations and extractions require band order to be specified as well. The default band order is [red,green,blue,redege,nir], and you can
+All non-volumetric calculations and extractions require band order to be specified as well. The default band order is [red,green,blue,rededge,nir], and you can
 use the default by using empty square brackets, like [], when specifying band order.
 
 Additionally, images in your input folder need to have a date in their file, delimited by ., _, or -. For example, three vaild date formats would be:
@@ -105,13 +105,13 @@ For the -i option, a complete list of vegetation indices can be found by running
 
 Below are some examples for running Zonal stats:
 ```
-python3 zonal_stats_3.py -i [BI,SCI,GLI] flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg
+python3 zonal_stats_3.py -i [BI,SCI,GLI] flight/rasters/ [red,green,blue,rededge,nir] flight/package.gpkg zonal_stats.gpkg
 #Runs with indices BI, SCI, and GLI
 
-python3 zonal_stats_3.py -u pid -a flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg
+python3 zonal_stats_3.py -u pid -a flight/rasters/ [red,green,blue,rededge,nir] flight/package.gpkg zonal_stats.gpkg
 #Runs with all indices, unique ID column set to 'pid'
 
-python3 zonal_stats_3.py -a flight/rasters/ [red,green,blue,redege,nir] flight/package.gpkg zonal_stats.gpkg
+python3 zonal_stats_3.py -a flight/rasters/ [red,green,blue,rededge,nir] flight/package.gpkg zonal_stats.gpkg
 #Runs all indices with band order red, green, blue, NIR, RedEdge
 
 python3 zonal_stats_3.py -n flight/thermals/ [swir] flight/rasters/ flight/package.gpkg zonal_stats.gpkg
@@ -126,13 +126,13 @@ python3 zonal_stats_3.py -V flight/dsms/ flight/ref_dsm.tif flight/package.gpkg 
 python3 zonal_stats_3.py -t 12 -v flight/dsms/ flight/package.gpkg zonal_stats.gpkg
 # Uses 12 threads to perform volume calculation
 
-python3 zonal_stats_3.py -p -i [BI] flight/rasters/ [red,green,blue,redege,nir] flight/point_package.gpkg point_stats.gpkg
+python3 zonal_stats_3.py -p -i [BI] flight/rasters/ [red,green,blue,rededge,nir] flight/point_package.gpkg point_stats.gpkg
 # Gets values at each point of a point-based geopackage after BI calculation
 
-python3 zonal_stats_3.py -C 1 -i [BI] flight/rasters/ [red,green,blue,redege,nir] flight/point_package.gpkg circle_stats.gpkg
+python3 zonal_stats_3.py -C 1 -i [BI] flight/rasters/ [red,green,blue,rededge,nir] flight/point_package.gpkg circle_stats.gpkg
 # Makes circular buffers with a 1 meter radius from point-based geopackage and performs BI calculation and then gets stats for each buffer
 
-python3 zonal_stats_3.py -S 1 -i [BI] flight/rasters/ [red,green,blue,redege,nir] flight/point_package.gpkg square_stats.gpkg
+python3 zonal_stats_3.py -S 1 -i [BI] flight/rasters/ [red,green,blue,rededge,nir] flight/point_package.gpkg square_stats.gpkg
 # Makes square buffers with a 1 meter radius from point-based geopackage and performs BI calculation and then gets stats for each buffer
 
 python3 zonal_stats_3.py -n flight/thermals/ [swir] -i [BI] flight/rasters/ [] flight/package.gpkg output.gpkg
