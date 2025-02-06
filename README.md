@@ -1,14 +1,25 @@
-# Zonal_Stats_3
-Performs vegetation index calculation, volume calculation, and raw extraction, followed by extraction of zonal statistics
+# Command-line Zonal Stats and Volume Extraction Tool
+Computes RGB and Multispectral vegetation indices, cut/fill volumes using digital surface models, and allows extraction of reduced (zonal statistics) values of pixels contained within the spatial domain of polygon geometries.
 
-## Explanation of Zonal Stats
+[Back to home](https://github.com/alexanderhernandez-USDA/Zonal-Stats-QGIS/blob/main/homedir.md)
+
+# Contents
+[Workflow](#Workflow)
+
+[Packages and Environment](#Packages/Environment)
+
+[Installation and Setup](#Installation/Setup)
+
+[Usage - Running Zonal Stats](#Running-Zonal-Stats)
+
+[Adding New Indices](#Customizing-or-adding-your-own-indices)
 
 ### Workflow
-The Zonal Stats tool has the following basic workflow:
+The Zonal Stats tool has the following basic operational workflow:
 1. Read input geopackage with geopandas
-2. Read input rasters and perform desired calculations (veg indices, volume, etc.) using rasterio and scikit-image 
+2. Read input rasters and perform desired calculations (vegetation indices, volume, etc.) using rasterio and scikit-image 
 3. Write calculations to temporary rasters using scikit-image, preserve metadata with exiftool
-4. Using exactextract python package, get median values of calculations within user created polygons (or sum in the case of volume calculation)
+4. Using exactextract python package, get median values (or sum in the case of volume calculation) of calculations within user created polygons or within polygons generated from point geometries 
 5. Append exactextract results as new columns to inputted geopackage
 6. Write updated geopackage to file using geopandas
 
@@ -18,21 +29,39 @@ Zonal Stats uses the following major python packages (not including those part o
 - Geopandas (and therefore Pandas): https://geopandas.org/
 - Rasterio: https://rasterio.readthedocs.io/
 - Exactextract: https://github.com/isciences/exactextract
-- Pyexiftool: https://smarnach.github.io/pyexiftool/
 - Shapely: https://shapely.readthedocs.io/en/stable/manual.html
 - Scikit-image (skimage): https://scikit-image.org/
 - Numpy: https://numpy.org/
 
 ## Installation/Setup
 
+The first thing you need is to have miniconda already installed on your computer (https://docs.anaconda.com/miniconda/install/).
+
 You will need to create a conda environment to run zonal stats 3. This can be done by using the geospatial3.9_env.yml file in this repository.
+The YML file can be accessed directly from:
+
+https://github.com/alexanderhernandez-USDA/Zonal_Stats_3/blob/main/geospatial3.9_env.yml
+
+You can then create the miniconda environment using the following sintax:
+
 ```
 conda create -f geospatial3.9_env.yml       # This will create an environement called 'geospatial'
 ```
 
-## Running Zonal Stats
 
-To run zonal_stats, you will need to activate the conda environment created from the geospatial3.9_env.yml. Next `cd` to the `zonal_stats` folder. In here, you will find `zonal_stats_3.py`. This program can run any number of index/data extractions as specified by flags, and has two required inputs, an input geopackage and an output geopackage. The command is run like so:
+## Running Zonal Stats
+To run zonal_stats, you will need to activate the conda environment created from the geospatial3.9_env.yml.
+
+```
+conda activate geospatial       # This will create an environement called 'geospatial'
+```
+
+Now that you have created and activated the miniconda environment - you can download the following python script (*.py) and configuration file (*.conf) that contains all of the available vegetation indices to your disk:
+
+https://github.com/alexanderhernandez-USDA/Zonal_Stats_3/blob/main/zonal_stats_3.py
+https://github.com/alexanderhernandez-USDA/Zonal_Stats_3/blob/main/indices.conf
+
+Next `cd` or navigate to the `zonal_stats` folder where you saved the Python script. In here, you will find `zonal_stats_3.py`. This program can run any number of index/data extractions as specified by flags, and has two required inputs, an input geopackage and an output geopackage. The command is run like so:
 ```
 python3 zonal_stats_3.py [OPTIONS] <index_flags> <index_requirements> /path/to/input.gpkg /path/to/output.gpkg
 ```
@@ -113,7 +142,10 @@ python3 zonal_stats_3.py -o flight/outputs/ -i [BI,SCI,GLI] flight/raster/ [] fl
 # Get BI, SCI and GLI indices and output rasters with calculation data in flight/outputs/
 ```
 
-Aside from the built in vegetation indices and calculations, custom indices/calculation can be added via the indices.conf file within the same folder as zonal_stats_3.py. These function can be defined in indices.conf like so:
+# Customizing or adding your own indices
+Aside from the built in vegetation indices and calculations, custom indices/calculation can be added via the indices.conf file within the same folder as zonal_stats_3.py. 
+
+These function can be defined in indices.conf like so:
 ```
 [NAME]
     desc: Description
