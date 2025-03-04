@@ -210,6 +210,10 @@ def calc_volume(proc_dir,t,in_dir,tName,bands,r):
     final = volumes * pos
     kwargs = dsm_raw.meta
 
+    with rasterio.open(os.path.join(proc_dir,tName,tName+'_HEIGHTS.tif'),'w',**kwargs) as dst:
+        dst.write(heights,1)
+        dst.close()
+        
     with rasterio.open(os.path.join(proc_dir,tName,tName+'_VOLUME.tif'),'w',**kwargs) as dst:
         dst.write(final,1)
         dst.close()
@@ -321,6 +325,9 @@ def exact_extract_sub(proc_dir,c,tName,gpkg,uid):
         if 'VOLUME' in c:
             res = exact_extract(os.path.join(proc_dir,tName,c),gpkg,['sum'],output="pandas",include_cols=[uid])
             res =  res.rename(columns={"sum":c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group()})
+        elif 'HEIGHTS' in c:
+            res = exact_extract(os.path.join(proc_dir,tName,c),gpkg,['mean','median'],output="pandas",include_cols=[uid])
+            res =  res.rename(columns={"median":c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group(),"mean":"mean-"+c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group()})
         else:
             res = exact_extract(os.path.join(proc_dir,tName,c),gpkg,['median'],output="pandas",include_cols=[uid])
             res =  res.rename(columns={"median":c.split("_")[-1].split(".tif")[0]+re.search(date_regex,c).group()})
