@@ -173,11 +173,13 @@ def calc_volume(proc_dir,t,in_dir,tName,bands,r):
     gdf = gpd.read_file(os.path.join(proc_dir,f"{'.'.join(t.split('.')[:-1])}.gpkg"))
     dsm_raw = rasterio.open(os.path.join(in_dir,t))
     dsm_data = dsm_raw.read(1)
+    # If there is no reference DSM/DEM, then do plane average height calculation
     if r['ref'] == "NONE":
         plane_arr = np.zeros([dsm_raw.height,dsm_raw.width])
         pixw = abs(dsm_raw.transform[0])
         pixy = abs(dsm_raw.transform[4])
         pix_area = pixw * pixy
+        # Go through all polygons in GPKG, get average heights for each and add to plane array
         for n,p in gdf.iterrows():
             if p['geometry'].geom_type == "MultiPolygon":
                 x,y = unary_union(p['geometry']).exterior.coords.xy
@@ -197,27 +199,30 @@ def calc_volume(proc_dir,t,in_dir,tName,bands,r):
             except Exception as e:
                 print(f"Error in calculating volume: {e}.\n Please verify that you are using the right geopackage!")
                 sys.exit(-1)
-
+        # Get height values
         heights = dsm_data - plane_arr
     else:
-        
+        # If there is a reference DSM/DEM, then use it to get heights
         alt_dsm_raw = rasterio.open(r['ref'])
         alt_dsm_data = alt_dsm_raw.read(1)
         heights = dsm_data - alt_dsm_data
 
+    # Calculate volumes and keep only positive volumes
     volumes = heights * pix_area
     pos = (volumes > 0).astype(int)
     final = volumes * pos
     kwargs = dsm_raw.meta
 
+    # Get positive heights and set others to the nodata value
     pos_heights = (heights > 0).astype(int)
     heights = heights * pos_heights
     heights = np.where(heights==0,dsm_raw.nodata,heights)
 
+    # Write the Volume and Heights rasters
     with rasterio.open(os.path.join(proc_dir,tName,tName+'_HEIGHTS.tif'),'w',**kwargs) as dst:
         dst.write(heights,1)
         dst.close()
-        
+
     with rasterio.open(os.path.join(proc_dir,tName,tName+'_VOLUME.tif'),'w',**kwargs) as dst:
         dst.write(final,1)
         dst.close()
@@ -230,7 +235,7 @@ indexDict = {
     'VOLUME': calc_volume
 }
 
-# Read indices configuration file
+# Read indices configuration file, and generates calculation functions
 def read_config(conf):
     global vegIndices
     if not os.path.exists(conf):
@@ -249,6 +254,7 @@ def read_config(conf):
         elif "desc" in i:
             desc = i.split(":")[-1].strip()
         elif "calc" in i:
+            # Now that we have a name, description, and calculation, generate a function
             calc = i.split(':')[-1].strip()
             exec(f"""def calc_{name}(raster,bands):
                                     with warnings.catch_warnings():
@@ -396,6 +402,7 @@ def get_multilayer_tif(proc_dir,subs,aoi_file=None):
             dst.write_band(n+1,l)
         dst.descriptions = tuple(names)
 
+    # If there is an Area of Interest (AOI) geopackage specified, use it to clip the output raster
     if aoi_file is not None:
         gpkg = gpd.read_file(aoi_file)
         if "Undefined geographic SRS" in str(gpkg.crs):
@@ -414,15 +421,10 @@ def get_multilayer_tif(proc_dir,subs,aoi_file=None):
         with rasterio.open(os.path.join(output,f"{date}_ZS_out.tif"),"w",**out_meta) as dst:
             dst.write(out_image)
             dst.descriptions = tuple(names)
-        #else:
-    #    gpkg = gpd.read_file(in_gpkg)
-    #    gpkg['temp'] = 0
-    #    gpkg = gpkg.dissolve(by='temp')
-    #    gpkg['geometry'] = gpkg['geometry'].envelope
 
     
 
-
+# This function clips input rasters by a bounding box of all polygons that intersect the raster, thus reducing raster size and increasing speed
 def pre_clip(img_dir,proc_dir,gpkg,band_len):
     gpkg['temp'] = 0
     tifs = os.listdir(img_dir)
@@ -433,6 +435,7 @@ def pre_clip(img_dir,proc_dir,gpkg,band_len):
     except FileExistsError:
         None
 
+    # For each input raster, make a clipped version of it and its own corresponding geopackage with relavent polygons
     for t in tifs:
         with rasterio.open(os.path.join(img_dir,t)) as src:
             vector = gpkg.to_crs(src.crs)
@@ -631,6 +634,7 @@ if __name__ == '__main__':
                         verbose = False
                         flag = True
                     if "o" in a:
+                        # Handle -o
                         flag = True
                         if os.path.exists(sys.argv[n+1]) and os.path.isdir(sys.argv[n+1]):
                             output = sys.argv[n+1]
@@ -639,6 +643,7 @@ if __name__ == '__main__':
                             print(f"{sys.argv[n+1]} is an invalid path for output directory!")
                             sys.exit(-1)
                     if "O" in a:
+                        # Handle -O
                         flag = True
                         if os.path.exists(sys.argv[n+1]) and os.path.isdir(sys.argv[n+1]):
                             output = sys.argv[n+1]
@@ -653,6 +658,7 @@ if __name__ == '__main__':
                             print(f"{sys.argv[n+1]} is an invalid path for output directory!")
                             sys.exit(-1)
                     if "i" in a:
+                        # Handle a -i
                         flag = True
                         if sys.argv[n+1][0] == "[" and sys.argv[n+1][-1] == "]" and sys.argv[n+1] != "[]":
                             if sys.argv[n+3][0] == "[" and sys.argv[n+3][-1] == "]":
@@ -670,8 +676,8 @@ if __name__ == '__main__':
                         else:
                             print("Invalid use of -i flag, expected [<vegetation indices>], not "+sys.argv[n+1])
                             sys.exit(-1)
-                    
                     if "a" in a:
+                        # Handle a -a
                         flag = True
                         if sys.argv[n+2][0] == "[" and sys.argv[n+2][-1] == "]":
                             if os.path.isdir(sys.argv[n+1]):
@@ -685,6 +691,7 @@ if __name__ == '__main__':
                             print(f"Invalid use of -a flag, {sys.argv[n+1]} is invalid format for band order")
                             sys.exit(-1)
                     if "n" in a:
+                        # Handle a -n
                         flag = True
                         if sys.argv[n+2][0] == "[" and sys.argv[n+2][-1] == "]":
                             if os.path.isdir(sys.argv[n+1]):
@@ -698,6 +705,7 @@ if __name__ == '__main__':
                             print(f"Invalid use of -n flag, {sys.argv[n+2]} is invalid format for band order")
                             sys.exit(-1)
                     if "v" in a:
+                        # Handle a -v
                         flag = True
                         if os.path.isdir(sys.argv[n+1]):
                             toRemove.append(sys.argv[n+1])
@@ -706,6 +714,7 @@ if __name__ == '__main__':
                             print("Invalid use of -v flag, specified directory "+sys.argv[n+1]+" isn't a directory")
                             sys.exit(-1)
                     if "V" in a:
+                        # Handle a -V
                         flag = True
                         if os.path.isdir(sys.argv[n+1]):
                             if os.path.isfile(sys.argv[n+2]) and sys.argv[n+2].split(".")[-1] in valid_types:
@@ -719,6 +728,7 @@ if __name__ == '__main__':
                             print("Invalid use of -V flag, specified directory "+sys.argv[n+1]+" isn't a directory")
                             sys.exit(-1)
                     if "t" in a:
+                        # Handle -t
                         flag = True
                         if re.search("^[1-9][0-9]*",sys.argv[n+1]):
                             if multiprocessing.cpu_count()-2 >= int(sys.argv[n+1]):
@@ -731,12 +741,14 @@ if __name__ == '__main__':
                             print(f"{sys.argv[n+1]} is an invalid format for threads, should be an integer greater than 1")
                             sys.exit(-1)
                     if "p" in a:
+                        # Handle -p
                         flag = True
                         if buffer!=None:
                             print("-p flag cannot be used with -S or -C flags!")
                             sys.exit(-1)
                         polygons = False
                     if "C" in a:
+                        # Handle -C
                         flag = True
                         if buffer == None and polygons:
                             buffer = "circle"
@@ -753,6 +765,7 @@ if __name__ == '__main__':
                             print(f"-C flag cannot be used with -S or -p!")
                             sys.exit(-1)
                     if "S" in a:
+                        # Handle -S
                         flag = True
                         if buffer == None and polygons:
                             buffer = "square"
